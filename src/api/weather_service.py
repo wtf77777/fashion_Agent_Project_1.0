@@ -1,131 +1,75 @@
 """
-衣櫥服務層
-處理衣櫥管理相關的業務邏輯
+天氣服務層
+處理天氣資料獲取與快取
 """
-import base64
-import hashlib
-from typing import List, Tuple, Optional
-from datetime import datetime
-from database.models import ClothingItem
-from database.supabase_client import SupabaseClient
+import requests
+from datetime import datetime, timedelta
+from typing import Optional
+from database.models import WeatherData
 
-class WardrobeService:
-    def __init__(self, supabase_client: SupabaseClient):
-        self.db = supabase_client
+class WeatherService:
+    def __init__(self, api_key: str, cache_hours: int = 1):
+        self.api_key = api_key
+        self.cache_hours = cache_hours
+        self._cache = {}  # {city: (weather_data, timestamp)}
     
-    @staticmethod
-    def get_image_hash(img_bytes: bytes) -> str:
-        """計算圖片的 SHA256 hash 值"""
-        return hashlib.sha256(img_bytes).hexdigest()
-    
-    def check_duplicate_image(self, user_id: str, img_hash: str) -> Tuple[bool, Optional[str]]:
+    def get_weather(self, city: str) -> Optional[WeatherData]:
         """
-        檢查圖片是否已存在
-        
-        Returns:
-            (是否重複, 已存在的衣物名稱)
-        """
-        try:
-            result = self.db.client.table("my_wardrobe")\
-                .select("id, name")\
-                .eq("user_id", user_id)\
-                .eq("image_hash", img_hash)\
-                .execute()
-            
-            if result.data:
-                return True, result.data[0]['name']
-            return False, None
-        except Exception as e:
-            print(f"檢查重複失敗: {str(e)}")
-            return False, None
-    
-    def save_item(self, item: ClothingItem, img_bytes: bytes) -> Tuple[bool, str]:
-        """
-        儲存衣物到資料庫
+        獲取天氣資料(含快取機制)
         
         Args:
-            item: 衣物資料模型
-            img_bytes: 圖片 bytes
+            city: 城市英文名稱
             
         Returns:
-            (是否成功, 結果訊息)
+            WeatherData 或 None
         """
-        try:
-            img_base64 = base64.b64encode(img_bytes).decode('utf-8')
-            img_hash = self.get_image_hash(img_bytes)
-            
-            item.image_data = img_base64
-            item.image_hash = img_hash
-            item.created_at = datetime.now()
-            
-            data = item.to_dict()
-            result = self.db.client.table("my_wardrobe").insert(data).execute()
-            
-            return True, "儲存成功"
-        except Exception as e:
-            return False, str(e)
-    
-    def get_wardrobe(self, user_id: str) -> List[ClothingItem]:
-        """獲取使用者的衣櫥"""
-        try:
-            response = self.db.client.table("my_wardrobe")\
-                .select("*")\
-                .eq("user_id", user_id)\
-                .order("created_at", desc=True)\
-                .execute()
-            
-            return [ClothingItem.from_dict(item) for item in response.data]
-        except Exception as e:
-            print(f"讀取衣櫥失敗: {str(e)}")
-            return []
-    
-    def delete_item(self, user_id: str, item_id: int) -> bool:
-        """刪除單件衣物"""
-        try:
-            self.db.client.table("my_wardrobe")\
-                .delete()\
-                .eq("id", item_id)\
-                .eq("user_id", user_id)\
-                .execute()
-            return True
-        except Exception as e:
-            print(f"刪除失敗: {str(e)}")
-            return False
-    
-    def batch_delete_items(self, user_id: str, item_ids: List[int]) -> Tuple[bool, int, int]:
-        """
-        批次刪除衣物
+        # 檢查快取
+        if city in self._cache:
+            cached_data, cached_time = self._cache[city]
+            if datetime.now() - cached_time < timedelta(hours=self.cache_hours):
+                return cached_data
         
-        Returns:
-            (是否成功, 成功數量, 失敗數量)
-        """
+        # 獲取新資料
         try:
-            success_count = 0
-            fail_count = 0
+            url = f"http://api.openweathermap.org/data/2.5/weather"
+            params = {
+                "q": city,
+                "appid": self.api_key,
+                "units": "metric",
+                "lang": "zh_tw"
+            }
             
-            for item_id in item_ids:
-                try:
-                    self.db.client.table("my_wardrobe")\
-                        .delete()\
-                        .eq("id", item_id)\
-                        .eq("user_id", user_id)\
-                        .execute()
-                    success_count += 1
-                except:
-                    fail_count += 1
+            response = requests.get(url, params=params, timeout=5)
+            response.raise_for_status()
+            data = response.json()
             
-            return True, success_count, fail_count
+            if 'main' not in data:
+                print(f"天氣 API 回應異常: {data}")
+                return None
+            
+            weather_data = WeatherData(
+                temp=data['main']['temp'],
+                feels_like=data['main']['feels_like'],
+                desc=data['weather'][0]['description'],
+                city=city,
+                update_time=datetime.now()
+            )
+            
+            # 更新快取
+            self._cache[city] = (weather_data, datetime.now())
+            
+            return weather_data
+            
+        except requests.exceptions.Timeout:
+            print(f"天氣 API 請求超時: {city}")
+            return None
+        except requests.exceptions.RequestException as e:
+            print(f"天氣 API 請求失敗: {str(e)}")
+            return None
         except Exception as e:
-            print(f"批次刪除失敗: {str(e)}")
-            return False, 0, 0
+            print(f"天氣資料處理失敗: {str(e)}")
+            return None
     
-    def get_category_statistics(self, user_id: str) -> dict:
-        """獲取衣櫥分類統計"""
-        items = self.get_wardrobe(user_id)
-        
-        categories = {}
-        for item in items:
-            cat = item.category or "其他"
-            categories[cat] = categories.get(cat, 0) + 1
-        
-        return categories
+    def clear_cache(self):
+        """清除快取"""
+        self._cache.clear()
