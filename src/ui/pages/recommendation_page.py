@@ -1,6 +1,6 @@
 """
-穿搭推薦頁面
-提供基於 AI 的智能穿搭建議
+穿搭推薦頁面 - 性能優化版
+提供基於 AI 的智能穿搭建議,優化載入速度
 """
 import streamlit as st
 import base64
@@ -38,23 +38,33 @@ def render_recommendation_page(
     if 'carousel_index' not in st.session_state:
         st.session_state.carousel_index = 0
     
-    # 城市選擇
-    with st.expander("🌍 城市設定", expanded=True):
-        city_display = st.selectbox(
-            "選擇城市",
-            options=list(TAIWAN_CITIES.keys()),
-            index=list(TAIWAN_CITIES.values()).index(selected_city) if selected_city in TAIWAN_CITIES.values() else 0,
-            help="選擇台灣縣市以獲取天氣資訊",
-            key="city_selector"
-        )
-        
-        # 更新選中的城市
-        new_city = TAIWAN_CITIES[city_display]
+    # ✅ 城市選擇 - 使用 callback 避免 rerun
+    def on_city_change():
+        """城市改變時的回調函數"""
+        new_city = TAIWAN_CITIES[st.session_state.city_selector_rec]
         if new_city != st.session_state.get('selected_city'):
             st.session_state.selected_city = new_city
             st.session_state.weather_data = None  # 清除舊天氣資料
+    
+    with st.expander("🌍 城市設定", expanded=True):
+        # 找到當前城市的顯示名稱
+        current_display = "台北 (Taipei)"
+        for display, english in TAIWAN_CITIES.items():
+            if english == st.session_state.get('selected_city', selected_city):
+                current_display = display
+                break
         
-        st.caption(f"📍 當前城市: **{new_city}**")
+        city_display = st.selectbox(
+            "選擇城市",
+            options=list(TAIWAN_CITIES.keys()),
+            index=list(TAIWAN_CITIES.keys()).index(current_display),
+            help="選擇台灣縣市以獲取天氣資訊",
+            key="city_selector_rec",
+            on_change=on_city_change  # ✅ 使用 callback
+        )
+        
+        current_city = st.session_state.get('selected_city', selected_city)
+        st.caption(f"📍 當前城市: **{current_city}**")
     
     st.divider()
     
@@ -65,7 +75,8 @@ def render_recommendation_page(
         style_input = st.text_input(
             "🎨 想要什麼風格?",
             placeholder="例如:日系簡約、美式復古...",
-            help="留空則由 AI 自由發揮(不限定風格)"
+            help="留空則由 AI 自由發揮(不限定風格)",
+            key="style_input_rec"
         )
         selected_style = style_input.strip() if style_input.strip() else "不限定風格"
     
@@ -73,26 +84,29 @@ def render_recommendation_page(
         occasion_input = st.text_input(
             "📍 要去什麼場合/活動?",
             placeholder="例如:公司開會、約會看電影、健身房...",
-            help="預設為:外出遊玩"
+            help="預設為:外出遊玩",
+            key="occasion_input_rec"
         )
         selected_occasion = occasion_input.strip() if occasion_input.strip() else "外出遊玩"
     
     st.caption(f"🎯 當前目標:在 **{selected_occasion}** 時,穿出 **{selected_style}**")
     
     # 獲取推薦按鈕
-    if st.button("✨ 獲取今日推薦", type="primary", use_container_width=True):
+    if st.button("✨ 獲取今日推薦", type="primary", use_container_width=True, key="get_recommendation_btn"):
         # 清除舊推薦
         st.session_state.ai_recommendation = None
         st.session_state.recommended_items_cache = None
         st.session_state.carousel_index = 0
         
         # 獲取天氣資料
+        current_city = st.session_state.get('selected_city', selected_city)
+        
         with st.spinner("🌤️ 正在查詢天氣..."):
-            weather = weather_service.get_weather(st.session_state.selected_city)
+            weather = weather_service.get_weather(current_city)
         
         if not weather:
             st.error("⚠️ 無法獲取天氣資訊,請檢查 API 設定")
-            return
+            st.stop()
         
         # 獲取衣櫥
         with st.spinner("👔 正在讀取衣櫥..."):
@@ -100,7 +114,7 @@ def render_recommendation_page(
         
         if not wardrobe:
             st.warning("📦 衣櫥是空的,請先上傳一些衣服!")
-            return
+            st.stop()
         
         st.divider()
         
@@ -117,7 +131,7 @@ def render_recommendation_page(
             st.session_state.ai_recommendation = recommendation
             st.session_state.current_weather = weather
             st.session_state.current_style = selected_style
-            st.rerun()
+            st.rerun()  # 只在獲取新推薦時 rerun
         else:
             st.error("❌ AI 推薦失敗,請重試")
     
@@ -135,7 +149,7 @@ def render_recommendation_page(
         # 推薦單品展示
         st.markdown("### 👔 推薦單品展示")
         
-        # 解析推薦的衣物
+        # 解析推薦的衣物 (只執行一次)
         if st.session_state.recommended_items_cache is None:
             wardrobe = wardrobe_service.get_wardrobe(user_id)
             st.session_state.recommended_items_cache = ai_service.parse_recommended_items(
@@ -146,31 +160,36 @@ def render_recommendation_page(
         recommended_items = st.session_state.recommended_items_cache
         
         if recommended_items:
-            # 輪播控制
+            # ✅ 優化輪播控制 - 使用 callback
+            def prev_item():
+                st.session_state.carousel_index = (st.session_state.carousel_index - 1) % len(recommended_items)
+            
+            def next_item():
+                st.session_state.carousel_index = (st.session_state.carousel_index + 1) % len(recommended_items)
+            
+            def jump_to_item(idx):
+                st.session_state.carousel_index = idx
+            
             col1, col2, col3 = st.columns([1, 2, 1])
             
             with col1:
-                if st.button("⬅️ 上一件", key="prev_item", use_container_width=True):
-                    st.session_state.carousel_index = (st.session_state.carousel_index - 1) % len(recommended_items)
-                    st.rerun()
+                st.button("⬅️ 上一件", key="prev_item_btn", use_container_width=True, on_click=prev_item)
             
             with col2:
                 st.markdown(
-                    f"<div style='text-align: center; color: #667eea; font-weight: bold; font-size: 18px;'>"
+                    f"<div style='text-align: center; color: #667eea; font-weight: bold; font-size: 18px; padding: 10px;'>"
                     f"第 {st.session_state.carousel_index + 1} / {len(recommended_items)} 件"
                     f"</div>",
                     unsafe_allow_html=True
                 )
             
             with col3:
-                if st.button("下一件 ➡️", key="next_item", use_container_width=True):
-                    st.session_state.carousel_index = (st.session_state.carousel_index + 1) % len(recommended_items)
-                    st.rerun()
+                st.button("下一件 ➡️", key="next_item_btn", use_container_width=True, on_click=next_item)
             
             # 顯示當前衣物
             current_item = recommended_items[st.session_state.carousel_index]
             
-            with st.container():
+            with st.container(border=True):
                 col_img, col_info = st.columns([3, 2])
                 
                 with col_img:
@@ -192,15 +211,22 @@ def render_recommendation_page(
                     st.markdown(f"**風格**: {current_item.style or 'N/A'}")
                     st.markdown(f"**保暖度**: {'🔥' * (current_item.warmth or 0)}")
             
-            # 快速導航
+            # ✅ 快速導航 - 使用數字按鈕
             st.markdown("---")
-            quick_nav_cols = st.columns(len(recommended_items))
-            for idx, col in enumerate(quick_nav_cols):
-                with col:
-                    emoji = "🔵" if idx == st.session_state.carousel_index else "⚪"
-                    if st.button(f"{emoji}", key=f"nav_{idx}", use_container_width=True):
-                        st.session_state.carousel_index = idx
-                        st.rerun()
+            st.caption("⚡ 快速跳轉:")
+            
+            nav_cols = st.columns(min(len(recommended_items), 10))
+            for idx in range(len(recommended_items)):
+                with nav_cols[idx % 10]:
+                    button_style = "primary" if idx == st.session_state.carousel_index else "secondary"
+                    st.button(
+                        f"{idx + 1}",
+                        key=f"nav_btn_{idx}",
+                        use_container_width=True,
+                        type=button_style,
+                        on_click=jump_to_item,
+                        args=(idx,)
+                    )
         else:
             st.info("💡 AI 推薦的衣物未在您的衣櫥中找到對應圖片")
         
@@ -215,4 +241,9 @@ def render_recommendation_page(
     - 提供個人化穿搭建議
     - ✨ 顯示推薦衣服的實際圖片
     - 使用 Gemini 2.5 Flash 模型
+    
+    **⚡ 性能優化:**
+    - 城市切換不會重新載入整個頁面
+    - 輪播切換即時響應
+    - 智能快取天氣與衣櫥資料
     """)
