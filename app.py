@@ -2,12 +2,6 @@
 主應用入口
 只負責頁面路由和狀態管理,所有業務邏輯已分離
 """
-import sys
-import os
-
-# 添加 src 目錄到 Python 路徑
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
-
 import streamlit as st
 from config import AppConfig, TAIWAN_CITIES, get_city_display_name
 from database.supabase_client import SupabaseClient
@@ -28,7 +22,11 @@ st.set_page_config(
 )
 
 # 應用自定義樣式
+from ui.styles import apply_custom_styles, render_scroll_to_top_button
 apply_custom_styles()
+
+# 渲染回到頂端按鈕（放在最開始）
+render_scroll_to_top_button()
 
 def init_session_state():
     """初始化 Session State"""
