@@ -21,7 +21,7 @@ def render_simple_top_button():
     .scroll-to-top-link {
         position: fixed;
         bottom: 20px;
-        right: 20px;
+        left: 20px;
         z-index: 9999;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
@@ -52,7 +52,7 @@ def render_simple_top_button():
             height: 50px;
             font-size: 20px;
             bottom: 15px;
-            right: 15px;
+            left: 15px;
         }
     }
     </style>
