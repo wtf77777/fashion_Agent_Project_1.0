@@ -54,9 +54,7 @@ def render_upload_page(
         if len(uploaded_files) > len(active_files):
             st.info(f"ℹ️ 已自動過濾 {len(uploaded_files) - len(active_files)} 張已上傳的圖片")
         
-        # 預覽照片（使用可摺疊區域）
-        with st.expander("👀 預覽所有照片", expanded=True):
-            _render_image_preview(active_files)
+        
         
         # 🔥 位置 1：顯示已選擇統計和批量上傳按鈕
         st.markdown("---")
@@ -79,7 +77,9 @@ def render_upload_page(
                     st.session_state.user_id,
                     config
                 )
-    
+        # 預覽照片（使用可摺疊區域）
+            with st.expander("👀 預覽所有照片", expanded=True):
+                _render_image_preview(active_files)
     st.divider()
     st.info("""
     **📌 使用提示:**
