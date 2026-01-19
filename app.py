@@ -23,9 +23,6 @@ st.set_page_config(
 # 🔥 關鍵：先渲染 Top 按鈕（使用 components）
 render_simple_top_button()
 
-# 應用自定義樣式
-apply_custom_styles()
-
 def init_session_state():
     """初始化 Session State"""
     if 'config' not in st.session_state:
