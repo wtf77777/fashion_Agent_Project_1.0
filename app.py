@@ -1,6 +1,6 @@
 """
 主應用入口
-只負責頁面路由和狀態管理,所有業務邏輯已分離
+只負責頁面路由和狀態管理，所有業務邏輯已分離
 """
 import streamlit as st
 from config import AppConfig, TAIWAN_CITIES, get_city_display_name
@@ -12,7 +12,7 @@ from ui.components.weather_widget import render_weather_widget
 from ui.pages.upload_page import render_upload_page
 from ui.pages.wardrobe_page import render_wardrobe_page
 from ui.pages.recommendation_page import render_recommendation_page
-from ui.styles import apply_custom_styles
+from ui.styles import apply_custom_styles, render_scroll_to_top_button
 
 # 頁面配置
 st.set_page_config(
@@ -21,17 +21,16 @@ st.set_page_config(
     layout="wide"
 )
 
-# 應用自定義樣式
-from ui.styles import apply_custom_styles, render_scroll_to_top_button
-apply_custom_styles()
-
-# 渲染回到頂端按鈕（放在最開始）
+# 🔥 關鍵：先渲染 Top 按鈕（使用 components）
 render_scroll_to_top_button()
+
+# 應用自定義樣式
+apply_custom_styles()
 
 def init_session_state():
     """初始化 Session State"""
     if 'config' not in st.session_state:
-        # 優先使用 Secrets,否則使用環境變數
+        # 優先使用 Secrets，否則使用環境變數
         config = AppConfig.from_secrets()
         if config is None:
             config = AppConfig.from_env()
@@ -80,7 +79,8 @@ def render_sidebar():
                         config.supabase_url, 
                         config.supabase_key
                     )
-                    st.success("✅ Supabase 已連接")
+                    if not config.is_valid():
+                        st.success("✅ Supabase 已連接")
                 except Exception as e:
                     st.error(f"❌ Supabase 連接失敗: {str(e)}")
         
@@ -115,8 +115,6 @@ def render_login():
                 elif not username or not password:
                     st.warning("請輸入使用者名稱和密碼")
                 else:
-                    # 這裡應該呼叫 AuthService
-                    # 為了簡化,暫時直接操作資料庫
                     try:
                         result = st.session_state.supabase_client.client.table("users")\
                             .select("*")\
