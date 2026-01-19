@@ -60,7 +60,7 @@ def render_upload_page(
         
         # 🔥 位置 1：顯示已選擇統計和批量上傳按鈕
         st.markdown("---")
-        col1, col2 = st.columns([1, 2])
+        col1, col2 = st.columns([0, 1])
         
         with col1:
             st.metric("📸 待上傳", len(active_files))
