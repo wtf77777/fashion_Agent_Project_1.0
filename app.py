@@ -12,8 +12,7 @@ from ui.components.weather_widget import render_weather_widget
 from ui.pages.upload_page import render_upload_page
 from ui.pages.wardrobe_page import render_wardrobe_page
 from ui.pages.recommendation_page import render_recommendation_page
-from ui.styles import apply_custom_styles, render_scroll_to_top_button
-
+from ui.styles import render_simple_top_button
 # 頁面配置
 st.set_page_config(
     page_title="2026 AI 時尚顧問", 
@@ -22,7 +21,7 @@ st.set_page_config(
 )
 
 # 🔥 關鍵：先渲染 Top 按鈕（使用 components）
-render_scroll_to_top_button()
+render_simple_top_button()
 
 # 應用自定義樣式
 apply_custom_styles()
